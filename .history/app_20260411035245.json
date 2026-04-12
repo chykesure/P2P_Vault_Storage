@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "P2P Storage Vault",
+    "slug": "p2p-storage-vault",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#6C5CE7"
+    },
+    "scheme": "p2pstoragevault",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.p2pstoragevault.app",
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app needs camera access to upload photos to your encrypted vault.",
+        "NSPhotoLibraryUsageDescription": "This app needs photo library access to upload photos to your encrypted vault."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#6C5CE7"
+      },
+      "package": "com.p2pstoragevault.app",
+      "versionCode": 1,
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-document-picker",
+      "expo-secure-store",
+      [
+        "expo-font",
+        {
+          "fonts": []
+        }
+      ],
+      "expo-web-browser"
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "walletConnectProjectId": "88caf1f4db83db8797f12037fbd9f9e1",
+      "contractAddress": "0xd9145CCE52D386f254917e481eB44e9943F39138",
+      "pinataJwt": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiJmMzAwZDEwZC1kYmUwLTRmOTUtYjczNi0yOWE5YTQ2NTU2MjkiLCJlbWFpbCI6InBvbHljYXJwY2hpa2VAZ21haWwuY29tIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsInBpbl9wb2xpY3kiOnsicmVnaW9ucyI6W3siZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiRlJBMSJ9LHsiZGVzaXJlZFJlcGxpY2F0aW9uQ291bnQiOjEsImlkIjoiTllDMSJ9XSwidmVyc2lvbiI6MX0sIm1mYV9lbmFibGVkIjpmYWxzZSwic3RhdHVzIjoiQUNUSVZFIn0sImF1dGhlbnRpY2F0aW9uVHlwZSI6InNjb3BlZEtleSIsInNjb3BlZEtleUtleSI6ImQ3OWVmODM1MjQwNWJlMTI4MWNmIiwic2NvcGVkS2V5U2VjcmV0IjoiOTk4MDVjZmQyOTMwN2I4NTIxOTJmNWI0ZTM0NmY1MDM5ODFjNTg5ZmYxZmZjYzk2NjI1M2EyMGM0NmVjNzIwOCIsImV4cCI6MTgwNzI2NTM4NH0.mOnDhhjAvp6KmRSiQCAkB8nUHbt2pkNhohLLYKKxr38",
+      "network": "polygonAmoy",
+      "eas": {
+        "projectId": "your_eas_project_id"
+      }
+    }
+  }
+}

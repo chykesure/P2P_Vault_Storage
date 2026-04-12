@@ -1,0 +1,1 @@
+module.exports = { createStore: function() { return { getProviders: function() { return []; }, requestProviders: function() { return Promise.resolve([]); }, subscribe: function() { return function() {}; } }; } };
