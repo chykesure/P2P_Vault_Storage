@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#6C5CE7"
       },
       "package": "com.p2pstoragevault.app",
@@ -65,10 +65,10 @@
         "origin": false
       },
       "walletConnectProjectId": "88caf1f4db83db8797f12037fbd9f9e1",
-      "contractAddress": "0x0000000000000000000000000000000000000000",
+      "contractAddress": "0x0000000000000000000000000000000000000000",0x5B38Da6a701c568545dCfcB03FcB875f56beddC4
       "pinataJwt": "",
       "network": "polygonAmoy",
-      " eas": {
+      "eas": {
         "projectId": "your_eas_project_id"
       }
     }

@@ -7,7 +7,10 @@ export type RootStackParamList = {
   SetupPassword: undefined;
   UnlockVault: undefined;
 
-  // Main tabs
+  // Main tabs wrapper
+  MainTabs: undefined;
+
+  // Tab screens
   Home: undefined;
   Upload: undefined;
   Files: undefined;

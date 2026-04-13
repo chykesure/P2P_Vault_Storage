@@ -119,15 +119,15 @@ export function AppNavigator() {
   React.useEffect(() => {
     if (!navigationRef.current) return;
     if (!isSetup) {
-      navigationRef.current.resetRoot({ index: 0, routes: [{ name: 'SetupPassword' }] });
+      navigationRef.current.resetRoot({ index: 0, routes: [{ name: 'SetupPassword' as const }] });
     } else if (!isAuthenticated) {
-      navigationRef.current.resetRoot({ index: 0, routes: [{ name: 'UnlockVault' }] });
+      navigationRef.current.resetRoot({ index: 0, routes: [{ name: 'UnlockVault' as const }] });
     } else {
-      navigationRef.current.resetRoot({ index: 0, routes: [{ name: 'MainTabs' }] });
+      navigationRef.current.resetRoot({ index: 0, routes: [{ name: 'MainTabs' as const }] });
     }
   }, [isSetup, isAuthenticated]);
 
-  const getInitialRoute = (): string => {
+  const getInitialRoute = (): keyof RootStackParamList => {
     if (!isSetup) return 'SetupPassword';
     if (!isAuthenticated) return 'UnlockVault';
     return 'MainTabs';

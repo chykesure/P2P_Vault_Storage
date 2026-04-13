@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "P2P Storage Vault",
+    "name": "P2P Storage Vaults",
     "slug": "p2p-storage-vault",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -24,7 +24,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#6C5CE7"
       },
       "package": "com.p2pstoragevault.app",
@@ -68,7 +68,7 @@
       "contractAddress": "0x0000000000000000000000000000000000000000",
       "pinataJwt": "",
       "network": "polygonAmoy",
-      " eas": {
+      "eas": {
         "projectId": "your_eas_project_id"
       }
     }
