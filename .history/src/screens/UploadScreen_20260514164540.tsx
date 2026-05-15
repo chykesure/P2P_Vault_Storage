@@ -17,17 +17,17 @@ import {
 } from 'react-native';
 import { Ionicons as Icon } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
+import { File } from 'expo-file-system';
 
 import { useFileVault } from '@hooks/useFileVault';
-import { useWeb3 } from '@contexts/Web3Context';
 import { useEncryption } from '@contexts/EncryptionContext';
 import { LoadingOverlay } from '@components/LoadingOverlay';
 import { MAX_FILE_SIZE } from '@config/constants';
 import { formatFileSize } from '@utils/formatters';
 
 export function UploadScreen() {
-  const { isConnected, openModal } = useWeb3();
-  const { isAuthenticated, lock } = useEncryption();
+  const { isUnlocked } = useEncryption();
   const { uploadFile, uploadProgress, resetUploadProgress } = useFileVault();
   const [selectedFile, setSelectedFile] = useState<{
     name: string;
@@ -41,36 +41,43 @@ export function UploadScreen() {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
         copyToCacheDirectory: true,
+        multiple: false,
       });
 
       if (result.canceled) {
         return; // User cancelled, not an error
       }
 
-      const file = result;
-      if (file.size && file.size > MAX_FILE_SIZE) {
+      // expo-document-picker v12+ returns file info in assets array
+      const asset = result.assets?.[0];
+      if (!asset) {
+        Alert.alert('Error', 'No file was selected.');
+        return;
+      }
+
+      if (asset.size && asset.size > MAX_FILE_SIZE) {
         Alert.alert(
           'File Too Large',
-          `Maximum file size is ${formatFileSize(MAX_FILE_SIZE)}. Your file is ${formatFileSize(file.size)}.`,
+          `Maximum file size is ${formatFileSize(MAX_FILE_SIZE)}. Your file is ${formatFileSize(asset.size)}.`,
         );
         return;
       }
+
+      console.log(`[Upload] Selected: ${asset.name} (${formatFileSize(asset.size || 0)}) type=${asset.mimeType} uri=${asset.uri}`);
+
       setSelectedFile({
-        name: file.name || 'Unknown',
-        size: file.size || 0,
-        type: file.mimeType || 'application/octet-stream',
-        uri: file.uri,
+        name: asset.name || 'Unknown',
+        size: asset.size || 0,
+        type: asset.mimeType || 'application/octet-stream',
+        uri: asset.uri,
       });
     } catch (err: any) {
+      console.error('[Upload] Document picker error:', err);
       Alert.alert('Error', 'Failed to pick file. Please try again.');
     }
   }, []);
 
   const handleUpload = async () => {
-    /* if (!isConnected) {
-      Alert.alert('Wallet Required', 'Please connect your wallet first.');
-      return;
-    } */
     if (!isAuthenticated) {
       Alert.alert('Vault Locked', 'Please unlock the vault with your password.');
       return;
@@ -78,19 +85,32 @@ export function UploadScreen() {
     if (!selectedFile) return;
 
     try {
-      // Read file data
-      const response = await fetch(selectedFile.uri);
-      const arrayBuffer = await response.arrayBuffer();
-      const fileData = new Uint8Array(arrayBuffer);
+      // Read file using expo-file-system legacy API (reliable for all file types)
+      const fileInfo = await FileSystem.getInfoAsync(selectedFile.uri);
+      if (!fileInfo.exists) {
+        Alert.alert('Error', 'File not found. Please select it again.');
+        return;
+      }
+
+      // Read as base64 — handles file:// URIs properly on iOS/Android
+      const base64Content = await FileSystem.readAsStringAsync(selectedFile.uri, {
+        encoding: 'base64',
+      });
+
+      // Convert base64 to Uint8Array
+      const binaryString = atob(base64Content);
+      const fileData = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        fileData[i] = binaryString.charCodeAt(i);
+      }
 
       await uploadFile(fileData, selectedFile.name, selectedFile.size, selectedFile.type);
-
       setSelectedFile(null);
     } catch (err: any) {
       Alert.alert('Upload Failed', err.message || 'An unexpected error occurred.');
     }
   };
-
+  
   const isUploading = uploadProgress.stage !== 'idle' && uploadProgress.stage !== 'done';
 
   return (

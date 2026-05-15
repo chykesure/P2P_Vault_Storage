@@ -21,16 +21,27 @@ import { Platform } from 'react-native';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface EncryptionContextType {
+  /** Whether encryption has been set up (password created) */
   isSetup: boolean;
+  /** Whether the vault is currently unlocked (key in memory) */
   isUnlocked: boolean;
+  /** True while checking SecureStore on app start */
   isChecking: boolean;
+  /** The derived encryption key (null when locked) */
   encryptionKey: string | null;
+  /** Create a new encryption password (first-time setup) */
   setupEncryption: (password: string) => Promise<boolean>;
+  /** Unlock the vault with existing password */
   unlockVault: (password: string) => Promise<boolean>;
+  /** Lock the vault (clear key from memory) */
   lockVault: () => void;
+  /** Encrypt data with the current key */
   encrypt: (data: string) => Promise<{ encrypted: string; key: string; iv: string }>;
+  /** Decrypt data with a specific key and iv */
   decrypt: (encryptedData: string, key: string, iv: string) => Promise<string>;
+  /** Change the encryption password (re-encrypt everything) */
   changePassword: (oldPassword: string, newPassword: string) => Promise<boolean>;
+  /** Remove encryption entirely */
   removeEncryption: () => Promise<void>;
 }
 
@@ -200,7 +211,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
       await SecureStore.setItemAsync(VERIFIER_KEY, verifier);
 
       if (mountedRef.current) {
-        updateKey(key);
+        updateKey(key);           // ★ ref + state — key available immediately
         setIsSetup(true);
         setIsUnlocked(true);
       }
@@ -234,7 +245,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
       const key = await deriveKey(password, salt);
 
       if (mountedRef.current) {
-        updateKey(key);
+        updateKey(key);           // ★ ref + state — key available immediately
         setIsUnlocked(true);
       }
 
@@ -250,7 +261,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
 
   const lockVault = useCallback(() => {
     if (mountedRef.current) {
-      updateKey(null);
+      updateKey(null);            // ★ ref + state
       setIsUnlocked(false);
     }
     console.log('[EncryptionContext] Vault locked.');
@@ -260,6 +271,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
 
   const encrypt = useCallback(
     async (data: string): Promise<{ encrypted: string; key: string; iv: string }> => {
+      // ★ Read from ref — always has the latest key, even before React re-renders
       const key = encryptionKeyRef.current;
       if (!key) {
         throw new Error('Vault is locked. Please unlock the vault with your password.');
@@ -270,7 +282,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
 
       return { encrypted, key, iv };
     },
-    [],
+    [],  // ★ no dependencies! stable reference, reads from ref
   );
 
   // ── Decrypt ───────────────────────────────────────────────────────────────
@@ -302,7 +314,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
         await SecureStore.setItemAsync(VERIFIER_KEY, newVerifier);
 
         if (mountedRef.current) {
-          updateKey(newKey);
+          updateKey(newKey);       // ★ ref + state
         }
 
         console.log('[EncryptionContext] ✅ Password changed.');
@@ -324,7 +336,7 @@ export function EncryptionProvider({ children }: { children: ReactNode }) {
       await SecureStore.deleteItemAsync(VERIFIER_KEY);
 
       if (mountedRef.current) {
-        updateKey(null);
+        updateKey(null);           // ★ ref + state
         setIsSetup(false);
         setIsUnlocked(false);
       }

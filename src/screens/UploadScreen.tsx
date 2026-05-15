@@ -27,7 +27,7 @@ import { MAX_FILE_SIZE } from '@config/constants';
 import { formatFileSize } from '@utils/formatters';
 
 export function UploadScreen() {
-  const { isAuthenticated } = useEncryption();
+  const { isUnlocked } = useEncryption();
   const { uploadFile, uploadProgress, resetUploadProgress } = useFileVault();
   const [selectedFile, setSelectedFile] = useState<{
     name: string;
@@ -78,7 +78,7 @@ export function UploadScreen() {
   }, []);
 
   const handleUpload = async () => {
-    if (!isAuthenticated) {
+    if (!isUnlocked) {
       Alert.alert('Vault Locked', 'Please unlock the vault with your password.');
       return;
     }

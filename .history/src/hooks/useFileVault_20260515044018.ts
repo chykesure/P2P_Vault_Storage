@@ -1,8 +1,8 @@
 /**
  * useFileVault Hook (Gas-Free Version)
- * 
- * Encryption metadata (iv) is embedded in the file data itself,
- * so we never depend on the file index to store it.
+ *
+ * Upload: Select -> Encrypt -> Upload to IPFS -> Pin -> Save to IPFS Index
+ * Download: Read IPFS Index -> Fetch from IPFS -> Decrypt -> Save locally
  */
 
 import { useState, useCallback } from 'react';
@@ -45,7 +45,7 @@ const initialProgress: UploadProgress = {
 
 export function useFileVault(): UseFileVaultReturn {
   const { address } = useAccount();
-  const { encrypt, decrypt, encryptionKey } = useEncryption();
+  const { encrypt, decrypt } = useEncryption();
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(initialProgress);
@@ -62,7 +62,7 @@ export function useFileVault(): UseFileVaultReturn {
   }, []);
 
   /**
-   * Upload: file -> base64 -> encrypt -> "iv|hexData" -> upload to IPFS
+   * Upload: Uint8Array -> base64 -> encrypt -> hex -> bytes -> IPFS
    */
   const uploadFile = useCallback(
     async (
@@ -73,18 +73,16 @@ export function useFileVault(): UseFileVaultReturn {
     ): Promise<VaultFile | null> => {
       const tempAddress = address || '0x0000000000000000000000000000000000000001';
       if (!address) {
-        logger.warn(TAG, 'Wallet not connected, using temp address');
+        logger.warn(TAG, 'Wallet not connected, using temp address for testing');
       }
 
       try {
         updateProgress('encrypting', 5, 'Preparing file...');
-
-        // Step 1: Convert raw bytes to base64 string
         const fileBase64 = uint8ArrayToBase64(fileData);
-        logger.info(TAG, `File to base64: ${fileBase64.length} chars`);
+        logger.info(TAG, `Converted file to base64: ${fileBase64.length} chars`);
 
-        // Step 2: Encrypt the base64 string
         updateProgress('encrypting', 15, 'Encrypting file...');
+        logger.info(TAG, `Encrypting file: ${fileName} (${fileSize} bytes)`);
 
         let encryptionResult;
         try {
@@ -94,17 +92,13 @@ export function useFileVault(): UseFileVaultReturn {
           return null;
         }
 
-        // Step 3: Pack iv + encrypted data together with separator
-        // Format: "iv|encryptedHex" — hex only uses 0-9a-f so | is safe as separator
-        const payload = encryptionResult.iv + '|' + encryptionResult.encrypted;
-        const payloadBytes = new TextEncoder().encode(payload);
-        logger.info(TAG, `Payload: iv(${encryptionResult.iv.length}) + data(${encryptionResult.encrypted.length}) = ${payloadBytes.length} bytes`);
-
-        // Step 4: Upload to IPFS
+        // ★ THE KEY FIX: encrypted is a HEX string, not base64!
         updateProgress('uploading', 30, 'Uploading to IPFS...');
+        const encryptedDataBytes = hexStringToUint8Array(encryptionResult.encrypted);
+
         let ipfsResult;
         try {
-          ipfsResult = await uploadToIPFS(payloadBytes, `${fileName}.enc`, 'application/octet-stream');
+          ipfsResult = await uploadToIPFS(encryptedDataBytes, `${fileName}.encrypted`, 'application/octet-stream');
         } catch (err: any) {
           updateProgress('error', 30, 'IPFS upload failed', err.message);
           return null;
@@ -114,15 +108,13 @@ export function useFileVault(): UseFileVaultReturn {
         logger.info(TAG, `Uploaded to IPFS. CID: ${cid}`);
         updateProgress('uploading', 60, `Uploaded! CID: ${cid.slice(0, 12)}...`);
 
-        // Step 5: Pin
         updateProgress('pinning', 70, 'Pinning file...');
         const pinResult = await pinToIPFS(cid);
         if (!pinResult.success) {
-          logger.warn(TAG, `Pinning failed for ${cid}`);
+          logger.warn(TAG, `Pinning failed for ${cid}. File may be garbage collected.`);
         }
         updateProgress('pinning', 80, pinResult.success ? 'File pinned!' : 'Pin failed (file still uploaded)');
 
-        // Step 6: Save to index (without encryption metadata — it's in the file)
         updateProgress('recording', 85, 'Saving file record...');
         try {
           await addFileToIndex(tempAddress, {
@@ -131,10 +123,12 @@ export function useFileVault(): UseFileVaultReturn {
             fileSize,
             fileType,
             encrypted: true,
+            encryptedKey: encryptionResult.key,
+            iv: encryptionResult.iv,
           });
-          logger.info(TAG, 'File record saved to index.');
+          logger.info(TAG, 'File record saved to IPFS index.');
         } catch (err: any) {
-          logger.warn(TAG, 'Index save failed, file still on IPFS:', err);
+          logger.warn(TAG, 'Failed to save to index, but file is on IPFS:', err);
         }
 
         updateProgress('done', 100, 'File uploaded successfully!');
@@ -145,6 +139,8 @@ export function useFileVault(): UseFileVaultReturn {
           fileSize,
           fileType,
           encrypted: true,
+          encryptedKey: encryptionResult.key,
+          iv: encryptionResult.iv,
           timestamp: Math.floor(Date.now() / 1000),
           isActive: true,
         };
@@ -161,55 +157,39 @@ export function useFileVault(): UseFileVaultReturn {
   );
 
   /**
-   * Download: IPFS -> "iv|hexData" -> split -> decrypt -> original file
+   * Download: IPFS -> bytes -> hex -> decrypt -> base64 -> bytes
    */
   const downloadFile = useCallback(
     async (file: VaultFile): Promise<Uint8Array | null> => {
+      const tempAddress = address || '0x0000000000000000000000000000000000000001';
+      if (!address) {
+        logger.warn(TAG, 'Wallet not connected, using temp address for download');
+      }
+
       try {
         logger.info(TAG, `Downloading file: ${file.cid}`);
 
         const encryptedBytes = await downloadAsUint8Array(file.cid);
         logger.info(TAG, `Downloaded ${encryptedBytes.length} bytes from IPFS`);
 
-        // If vault is unlocked and file is encrypted, decrypt it
-        if (file.encrypted && encryptionKey) {
+        if (file.encrypted && file.encryptedKey && file.iv) {
           try {
-            // Convert bytes to text, then split out the iv
-            const rawText = new TextDecoder().decode(encryptedBytes);
-            const separatorIndex = rawText.indexOf('|');
-
-            if (separatorIndex === -1) {
-              logger.warn(TAG, 'No iv separator found — old format file, returning raw');
-              return encryptedBytes;
-            }
-
-            const iv = rawText.substring(0, separatorIndex);
-            const encryptedHex = rawText.substring(separatorIndex + 1);
-
-            logger.info(TAG, `Decrypting: iv=${iv} hexLen=${encryptedHex.length}`);
-
-            // Decrypt: hex -> xorDecrypt -> original base64 string
-            const decryptedBase64 = await decrypt(encryptedHex, encryptionKey, iv);
-
-            // Convert base64 string back to bytes
-            const originalBytes = base64ToUint8Array(decryptedBase64);
-            logger.info(TAG, `Decrypted! ${originalBytes.length} bytes`);
-
-            return originalBytes;
+            const encryptedHex = uint8ArrayToHexString(encryptedBytes);
+            const decryptedBase64 = await decrypt(encryptedHex, file.encryptedKey, file.iv);
+            return base64ToUint8Array(decryptedBase64);
           } catch (err: any) {
             logger.error(TAG, 'Decryption failed:', err);
             return encryptedBytes;
           }
         }
 
-        // Not encrypted — return raw bytes
         return encryptedBytes;
       } catch (err: any) {
         logger.error(TAG, 'Download failed:', err);
         return null;
       }
     },
-    [decrypt, encryptionKey],
+    [address, decrypt],
   );
 
   const getFileByCid = useCallback(
@@ -258,7 +238,7 @@ export function useFileVault(): UseFileVaultReturn {
     try {
       const userFiles = await getUserFiles(tempAddress);
       setFiles(userFiles);
-      logger.info(TAG, `Refreshed: ${userFiles.length} files`);
+      logger.info(TAG, `Refreshed file list: ${userFiles.length} files`);
     } catch (err: any) {
       logger.error(TAG, 'Failed to refresh files:', err);
     } finally {
@@ -320,4 +300,16 @@ function base64ToUint8Array(base64: string): Uint8Array {
     if (p < bufLen) bytes[p++] = ((c & 3) << 6) | d;
   }
   return bytes;
+}
+
+function hexStringToUint8Array(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function uint8ArrayToHexString(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }

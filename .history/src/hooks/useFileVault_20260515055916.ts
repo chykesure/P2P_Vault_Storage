@@ -1,12 +1,8 @@
 /**
  * useFileVault Hook (Gas-Free Version)
- * 
- * Orchestrates the complete file upload and download flow:
+ *
  * Upload: Select -> Encrypt -> Upload to IPFS -> Pin -> Save to IPFS Index
  * Download: Read IPFS Index -> Fetch from IPFS -> Decrypt -> Save locally
- * 
- * NOTE: This version uses IPFS-based file indexing instead of a smart contract.
- * No gas fees are required. The file index is stored as a JSON file on IPFS.
  */
 
 import { useState, useCallback } from 'react';
@@ -25,26 +21,19 @@ import { logger } from '@utils/logger';
 const TAG = 'useFileVault';
 
 interface UseFileVaultReturn {
-  /** List of user's vault files */
   files: VaultFile[];
-  /** Current upload progress */
   uploadProgress: UploadProgress;
-  /** Whether files are being loaded */
   isLoadingFiles: boolean;
-  /** Upload a file through the full pipeline */
   uploadFile: (
     fileData: Uint8Array,
     fileName: string,
     fileSize: number,
     fileType: string,
   ) => Promise<VaultFile | null>;
-  /** Download and decrypt a file from the vault */
   downloadFile: (file: VaultFile) => Promise<Uint8Array | null>;
-  /** Delete a file record from the vault */
+  getFileByCid: (cid: string) => Promise<VaultFile | null>;
   deleteFile: (cid: string) => Promise<boolean>;
-  /** Refresh the file list from IPFS */
   refreshFiles: () => Promise<void>;
-  /** Reset upload progress to idle */
   resetUploadProgress: () => void;
 }
 
@@ -56,7 +45,7 @@ const initialProgress: UploadProgress = {
 
 export function useFileVault(): UseFileVaultReturn {
   const { address } = useAccount();
-  const { encrypt, decrypt } = useEncryption();
+  const { encrypt, decrypt, encryptionKey } = useEncryption();
   const [files, setFiles] = useState<VaultFile[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress>(initialProgress);
@@ -73,11 +62,7 @@ export function useFileVault(): UseFileVaultReturn {
   }, []);
 
   /**
-   * Upload a file through the complete gas-free pipeline:
-   * 1. Encrypt locally
-   * 2. Upload encrypted data to IPFS
-   * 3. Pin to ensure persistence
-   * 4. Save file record to IPFS-based index (NO GAS!)
+   * Upload: Uint8Array -> base64 -> encrypt -> hex -> bytes -> IPFS
    */
   const uploadFile = useCallback(
     async (
@@ -86,27 +71,30 @@ export function useFileVault(): UseFileVaultReturn {
       fileSize: number,
       fileType: string,
     ): Promise<VaultFile | null> => {
+      const tempAddress = address || '0x0000000000000000000000000000000000000001';
       if (!address) {
-        updateProgress('error', 0, 'Wallet not connected');
-        return null;
+        logger.warn(TAG, 'Wallet not connected, using temp address for testing');
       }
 
       try {
-        // Step 1: Encrypt
-        updateProgress('encrypting', 10, 'Encrypting file...');
+        updateProgress('encrypting', 5, 'Preparing file...');
+        const fileBase64 = uint8ArrayToBase64(fileData);
+        logger.info(TAG, `Converted file to base64: ${fileBase64.length} chars`);
+
+        updateProgress('encrypting', 15, 'Encrypting file...');
         logger.info(TAG, `Encrypting file: ${fileName} (${fileSize} bytes)`);
 
         let encryptionResult;
         try {
-          encryptionResult = encrypt(fileData);
+          encryptionResult = await encrypt(fileBase64);
         } catch (err: any) {
-          updateProgress('error', 10, 'Encryption failed', err.message);
+          updateProgress('error', 15, 'Encryption failed', err.message);
           return null;
         }
 
-        // Step 2: Upload to IPFS
+        // ★ THE KEY FIX: encrypted is a HEX string, not base64!
         updateProgress('uploading', 30, 'Uploading to IPFS...');
-        const encryptedDataBytes = base64ToUint8Array(encryptionResult.encryptedData);
+        const encryptedDataBytes = new TextEncoder().encode(encryptionResult.encrypted);
 
         let ipfsResult;
         try {
@@ -120,40 +108,40 @@ export function useFileVault(): UseFileVaultReturn {
         logger.info(TAG, `Uploaded to IPFS. CID: ${cid}`);
         updateProgress('uploading', 60, `Uploaded! CID: ${cid.slice(0, 12)}...`);
 
-        // Step 3: Pin
-        updateProgress('pinning', 70, 'Pinning file to ensure persistence...');
+        updateProgress('pinning', 70, 'Pinning file...');
         const pinResult = await pinToIPFS(cid);
         if (!pinResult.success) {
           logger.warn(TAG, `Pinning failed for ${cid}. File may be garbage collected.`);
         }
         updateProgress('pinning', 80, pinResult.success ? 'File pinned!' : 'Pin failed (file still uploaded)');
 
-        // Step 4: Save to IPFS-based file index (NO GAS FEES!)
         updateProgress('recording', 85, 'Saving file record...');
         try {
-          await addFileToIndex(address, {
+          await addFileToIndex(tempAddress, {
             cid,
             fileName,
             fileSize,
             fileType,
+            encrypted: true,
+            iv: encryptionResult.iv,
           });
-          logger.info(TAG, `File record saved to IPFS index.`);
+          logger.info(TAG, 'File record saved to IPFS index.');
         } catch (err: any) {
           logger.warn(TAG, 'Failed to save to index, but file is on IPFS:', err);
-          // Don't fail the upload — file is still safely on IPFS
         }
 
-        // Done!
         updateProgress('done', 100, 'File uploaded successfully!');
 
         const newFile: VaultFile = {
-          cid,
-          fileName,
-          fileSize,
-          fileType,
-          timestamp: Math.floor(Date.now() / 1000),
-          isActive: true,
-        };
+  cid,
+  fileName,
+  fileSize,
+  fileType,
+  encrypted: true,
+  iv: encryptionResult.iv,
+  timestamp: Math.floor(Date.now() / 1000),
+  isActive: true,
+};
 
         setFiles(prev => [newFile, ...prev]);
         return newFile;
@@ -167,44 +155,67 @@ export function useFileVault(): UseFileVaultReturn {
   );
 
   /**
-   * Download and decrypt a file from the vault.
+   * Download: IPFS -> bytes -> hex -> decrypt -> base64 -> bytes
    */
   const downloadFile = useCallback(
     async (file: VaultFile): Promise<Uint8Array | null> => {
+      const tempAddress = address || '0x0000000000000000000000000000000000000001';
       if (!address) {
-        logger.error(TAG, 'Cannot download: wallet not connected');
-        return null;
+        logger.warn(TAG, 'Wallet not connected, using temp address for download');
       }
 
       try {
         logger.info(TAG, `Downloading file: ${file.cid}`);
 
-        // Download encrypted data from IPFS
-        const encryptedData = await downloadAsUint8Array(file.cid);
+        const encryptedBytes = await downloadAsUint8Array(file.cid);
+        logger.info(TAG, `Downloaded ${encryptedBytes.length} bytes from IPFS`);
 
-        logger.info(TAG, `Downloaded ${encryptedData.length} bytes`);
-        return encryptedData;
+        if (file.encrypted && file.encryptedKey && file.iv) {
+          try {
+            const encryptedHex = new TextDecoder().decode(encryptedBytes);
+            const decryptedBase64 = await decrypt(encryptedHex, file.encryptedKey, file.iv);
+            return base64ToUint8Array(decryptedBase64);
+          } catch (err: any) {
+            logger.error(TAG, 'Decryption failed:', err);
+            return encryptedBytes;
+          }
+        }
+
+        return encryptedBytes;
       } catch (err: any) {
         logger.error(TAG, 'Download failed:', err);
+        return null;
+      }
+    },
+    [address, decrypt],
+  );
+
+  const getFileByCid = useCallback(
+    async (cid: string): Promise<VaultFile | null> => {
+      try {
+        const allFiles = await getUserFiles(
+          address || '0x0000000000000000000000000000000000000001'
+        );
+        const found = allFiles.find(f => f.cid === cid);
+        return found || null;
+      } catch (err: any) {
+        logger.error(TAG, 'getFileByCid failed:', err);
         return null;
       }
     },
     [address],
   );
 
-  /**
-   * Delete a file record from the IPFS-based index (NO GAS!).
-   */
   const deleteFile = useCallback(
     async (cid: string): Promise<boolean> => {
+      const tempAddress = address || '0x0000000000000000000000000000000000000001';
       if (!address) {
-        logger.error(TAG, 'Cannot delete: wallet not connected');
-        return false;
+        logger.warn(TAG, 'Wallet not connected, using temp address for delete');
       }
 
       try {
         logger.info(TAG, `Deleting file record: ${cid}`);
-        await removeFileFromIndex(address, cid);
+        await removeFileFromIndex(tempAddress, cid);
         setFiles(prev => prev.filter(f => f.cid !== cid));
         return true;
       } catch (err: any) {
@@ -215,18 +226,15 @@ export function useFileVault(): UseFileVaultReturn {
     [address],
   );
 
-  /**
-   * Refresh file list from the IPFS-based index (NO GAS!).
-   */
   const refreshFiles = useCallback(async () => {
+    const tempAddress = address || '0x0000000000000000000000000000000000000001';
     if (!address) {
-      logger.warn(TAG, 'Cannot refresh: wallet not connected');
-      return;
+      logger.warn(TAG, 'Wallet not connected, using temp address for refresh');
     }
 
     setIsLoadingFiles(true);
     try {
-      const userFiles = await getUserFiles(address);
+      const userFiles = await getUserFiles(tempAddress);
       setFiles(userFiles);
       logger.info(TAG, `Refreshed file list: ${userFiles.length} files`);
     } catch (err: any) {
@@ -242,17 +250,64 @@ export function useFileVault(): UseFileVaultReturn {
     isLoadingFiles,
     uploadFile,
     downloadFile,
+    getFileByCid,
     deleteFile,
     refreshFiles,
     resetUploadProgress,
   };
 }
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  let base64 = '';
+  for (let i = 0; i < bytes.length; i += 3) {
+    const a = bytes[i];
+    const b = bytes[i + 1];
+    const c = bytes[i + 2];
+    const triplet =
+      (a << 16) | (b !== undefined ? b << 8 : 0) | (c !== undefined ? c : 0);
+    base64 += chars[(triplet >> 18) & 0x3f];
+    base64 += chars[(triplet >> 12) & 0x3f];
+    base64 += b !== undefined ? chars[(triplet >> 6) & 0x3f] : '=';
+    base64 += c !== undefined ? chars[triplet & 0x3f] : '=';
+  }
+  return base64;
+}
+
 function base64ToUint8Array(base64: string): Uint8Array {
-  const binary = atob(base64);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
-    bytes[i] = binary.charCodeAt(i);
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  const lookup = new Uint8Array(256);
+  for (let i = 0; i < chars.length; i++) {
+    lookup[chars.charCodeAt(i)] = i;
+  }
+  const cleaned = base64.replace(/=+$/, '');
+  const len = cleaned.length;
+  const bufLen = Math.floor(len * 3 / 4);
+  const bytes = new Uint8Array(bufLen);
+  let p = 0;
+  for (let i = 0; i < len; i += 4) {
+    const encoded = cleaned.slice(i, i + 4);
+    const a = lookup[encoded.charCodeAt(0)] || 0;
+    const b = lookup[encoded.charCodeAt(1)] || 0;
+    const c = lookup[encoded.charCodeAt(2)] || 0;
+    const d = lookup[encoded.charCodeAt(3)] || 0;
+    bytes[p++] = (a << 2) | (b >> 4);
+    if (p < bufLen) bytes[p++] = ((b & 15) << 4) | (c >> 2);
+    if (p < bufLen) bytes[p++] = ((c & 3) << 6) | d;
   }
   return bytes;
+}
+
+function hexStringToUint8Array(hex: string): Uint8Array {
+  const bytes = new Uint8Array(hex.length / 2);
+  for (let i = 0; i < hex.length; i += 2) {
+    bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+  }
+  return bytes;
+}
+
+function uint8ArrayToHexString(bytes: Uint8Array): string {
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
 }
