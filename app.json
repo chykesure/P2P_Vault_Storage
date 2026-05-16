@@ -37,7 +37,10 @@
               "scheme": "p2pstoragevault"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ],
       "permissions": [
@@ -50,7 +53,6 @@
       "bundler": "metro"
     },
     "plugins": [
-      "expo-router",
       "expo-document-picker",
       "expo-secure-store",
       [
@@ -70,6 +72,9 @@
       "network": "polygonAmoy",
       " eas": {
         "projectId": "your_eas_project_id"
+      },
+      "eas": {
+        "projectId": "09f9311b-37ec-43d9-9919-730a63aabf39"
       }
     }
   }

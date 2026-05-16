@@ -25,9 +25,10 @@ config.resolver.extraNodeModules = {
 
 const originalResolveRequest = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // 1. Block all node:* imports — use type:empty (NOT sourceFile to avoid SHA-1 error)
+  // 1. Block all node:* prefixed imports — return REAL FILE PATH
+  //    (not just { type: 'empty' } because Metro validates node: paths differently)
   if (moduleName.startsWith('node:')) {
-    return { type: 'empty' };
+    return { type: 'sourceFile', filePath: emptyModule };
   }
 
   // 2. Block bare Node.js built-in names

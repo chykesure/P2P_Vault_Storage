@@ -8,13 +8,6 @@
 
 // Polyfill for react-native-get-random-values (needed by wagmi/viem)
 import 'react-native-get-random-values';
-import { Buffer } from 'buffer';
-import process from 'process';
-
-global.Buffer = Buffer;
-global.process = process;
-
-import 'react-native-get-random-values';
 
 // Import the root App component
 import App from './src/App';

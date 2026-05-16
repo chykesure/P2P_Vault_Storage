@@ -13,7 +13,6 @@ import process from 'process';
 
 global.Buffer = Buffer;
 global.process = process;
-
 import 'react-native-get-random-values';
 
 // Import the root App component
