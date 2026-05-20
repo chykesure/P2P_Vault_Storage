@@ -60,7 +60,8 @@
         {
           "fonts": []
         }
-      ]
+      ],
+      "expo-web-browser"
     ],
     "extra": {
       "router": {

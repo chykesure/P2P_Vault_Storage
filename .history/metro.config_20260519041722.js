@@ -23,9 +23,13 @@ config.resolver.extraNodeModules = {
   worker_threads: emptyModule, async_hooks: emptyModule,
 };
 
-// Get root zod paths at startup - these are v4.4.3 with z.partial
-const rootZodMain = require.resolve('zod', { paths: [__dirname] });
-const rootZodMini = path.join(__dirname, 'node_modules', 'zod', 'mini', 'index.cjs');
+// Pre-compute the ROOT zod main entry path ONCE
+let rootZodEntry = null;
+try {
+  rootZodEntry = require.resolve('zod', { paths: [__dirname] });
+} catch (e) {
+  console.log('[Metro] WARNING: Cannot find root zod package');
+}
 
 const originalResolveRequest = config.resolver.resolveRequest;
 
@@ -46,20 +50,26 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { type: 'empty' };
   }
 
-  // FORCE all zod imports to use ROOT zod v4.4.3 only
-  // This prevents metro from resolving to nested zod v3.22.4 in appkit-wallet
-  if (moduleName === 'zod') {
-    return { type: 'sourceFile', filePath: rootZodMain };
-  }
+  // zod/mini points to a missing index.cjs — FORCE it to use root zod main entry
   if (moduleName === 'zod/mini') {
-    return { type: 'sourceFile', filePath: rootZodMini };
+    if (rootZodEntry) {
+      console.log('[Metro] Redirecting zod/mini -> ' + rootZodEntry);
+      return { type: 'sourceFile', filePath: rootZodEntry };
+    }
+    return { type: 'empty' };
   }
-  if (moduleName.startsWith('zod/')) {
-    try {
-      const resolved = require.resolve(moduleName, { paths: [__dirname] });
-      return { type: 'sourceFile', filePath: resolved };
-    } catch (err) {
-      return { type: 'sourceFile', filePath: rootZodMain };
+
+  // All other zod imports — force ROOT resolution only
+  if (moduleName === 'zod' || moduleName.startsWith('zod/')) {
+    if (rootZodEntry) {
+      try {
+        const resolved = require.resolve(moduleName, { paths: [__dirname] });
+        return { type: 'sourceFile', filePath: resolved };
+      } catch (err) {
+        // If subpath fails, fall back to root zod entry
+        console.log('[Metro] zod subpath "' + moduleName + '" failed, using root zod');
+        return { type: 'sourceFile', filePath: rootZodEntry };
+      }
     }
   }
 

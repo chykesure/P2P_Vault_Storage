@@ -23,10 +23,6 @@ config.resolver.extraNodeModules = {
   worker_threads: emptyModule, async_hooks: emptyModule,
 };
 
-// Get root zod paths at startup - these are v4.4.3 with z.partial
-const rootZodMain = require.resolve('zod', { paths: [__dirname] });
-const rootZodMini = path.join(__dirname, 'node_modules', 'zod', 'mini', 'index.cjs');
-
 const originalResolveRequest = config.resolver.resolveRequest;
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
@@ -46,20 +42,25 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     return { type: 'empty' };
   }
 
-  // FORCE all zod imports to use ROOT zod v4.4.3 only
-  // This prevents metro from resolving to nested zod v3.22.4 in appkit-wallet
-  if (moduleName === 'zod') {
-    return { type: 'sourceFile', filePath: rootZodMain };
-  }
-  if (moduleName === 'zod/mini') {
-    return { type: 'sourceFile', filePath: rootZodMini };
-  }
-  if (moduleName.startsWith('zod/')) {
+  // FORCE all zod imports to resolve from ROOT node_modules ONLY
+  // porto has a nested zod v3 which lacks z.partial and zod/mini
+  if (moduleName === 'zod' || moduleName.startsWith('zod/')) {
     try {
-      const resolved = require.resolve(moduleName, { paths: [__dirname] });
-      return { type: 'sourceFile', filePath: resolved };
+      const resolvedPath = require.resolve(moduleName, { paths: [__dirname] });
+      return { type: 'sourceFile', filePath: resolvedPath };
     } catch (err) {
-      return { type: 'sourceFile', filePath: rootZodMain };
+      // zod/mini may not exist as separate entry - fall back to full zod
+      if (moduleName === 'zod/mini') {
+        try {
+          const fallback = require.resolve('zod', { paths: [__dirname] });
+          return { type: 'sourceFile', filePath: fallback };
+        } catch (e) {
+          console.log('[Metro] CRITICAL: Cannot resolve zod: ' + e.message);
+          return { type: 'empty' };
+        }
+      }
+      console.log('[Metro] Failed to resolve zod module "' + moduleName + '": ' + err.message);
+      return { type: 'empty' };
     }
   }
 
