@@ -1,3 +1,4 @@
+
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
@@ -44,19 +45,6 @@ config.resolver.extraNodeModules = {
   window: emptyModule,
   localStorage: emptyModule,
   mipd: mipdShim,
-};
-
-// Intercept mipd from ANY location (wagmi core has nested copy)
-const originalResolveRequest = config.resolver.resolveRequest;
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  // Force mipd to use our shim regardless of where it is imported from
-  if (moduleName === 'mipd') {
-    return { type: 'sourceFile', filePath: mipdShim };
-  }
-  if (originalResolveRequest) {
-    return originalResolveRequest(context, moduleName, platform);
-  }
-  return context.resolveRequest(context, moduleName, platform);
 };
 
 module.exports = config;

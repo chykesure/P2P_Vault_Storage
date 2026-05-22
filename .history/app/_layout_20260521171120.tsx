@@ -5,7 +5,7 @@
  * The splash stays visible until the user taps Get Started.
  */
 
-import '@walletconnect/react-native-compat';
+// import '@walletconnect/react-native-compat';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

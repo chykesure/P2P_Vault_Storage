@@ -5,7 +5,7 @@
  * The splash stays visible until the user taps Get Started.
  */
 
-import '@walletconnect/react-native-compat';
+// import '@walletconnect/react-native-compat';
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,6 +18,7 @@ import Animated, {
   withRepeat,
   withTiming,
   withSequence,
+  withDelay,
   interpolate,
   Easing,
 } from 'react-native-reanimated';
@@ -266,10 +267,10 @@ function AnimatedTitle() {
   const subOpacity = useSharedValue(0);
 
   useEffect(() => {
-    titleOpacity.value = withTiming(1, { duration: 800, delay: 300 });
-    titleY.value = withTiming(0, { duration: 800, delay: 300, easing: Easing.out(Easing.cubic) });
-    subOpacity.value = withTiming(1, { duration: 800, delay: 600 });
-    subY.value = withTiming(0, { duration: 800, delay: 600, easing: Easing.out(Easing.cubic) });
+    titleOpacity.value = withDelay(300, withTiming(1, { duration: 800 }));
+    titleY.value = withDelay(300, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
+    subOpacity.value = withDelay(600, withTiming(1, { duration: 800 }));
+    subY.value = withDelay(600, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
   }, []);
 
   const titleStyle = useAnimatedStyle(() => ({
@@ -307,8 +308,8 @@ function GetStartedButton({ onPress }: { onPress: () => void }) {
   const pressedScale = useSharedValue(1);
 
   useEffect(() => {
-    btnOpacity.value = withTiming(1, { duration: 800, delay: 1000 });
-    btnY.value = withTiming(0, { duration: 800, delay: 1000, easing: Easing.out(Easing.cubic) });
+    btnOpacity.value = withDelay(1000, withTiming(1, { duration: 800 }));
+    btnY.value = withDelay(1000, withTiming(0, { duration: 800, easing: Easing.out(Easing.cubic) }));
   }, []);
 
   const btnStyle = useAnimatedStyle(() => ({
@@ -364,7 +365,7 @@ function FeaturePills() {
   const opacity = useSharedValue(0);
 
   useEffect(() => {
-    opacity.value = withTiming(1, { duration: 1000, delay: 1200 });
+    opacity.value = withDelay(1200, withTiming(1, { duration: 1000 }));
   }, []);
 
   const animStyle = useAnimatedStyle(() => ({

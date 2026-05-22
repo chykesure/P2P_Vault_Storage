@@ -4,6 +4,7 @@
  * Professional Web3 splash screen with "Get Started" button.
  * The splash stays visible until the user taps Get Started.
  */
+
 // import '@walletconnect/react-native-compat';
 
 import React, { useState, useEffect, useCallback } from 'react';
@@ -21,7 +22,8 @@ import Animated, {
   interpolate,
   Easing,
 } from 'react-native-reanimated';
-
+import { Web3Wrapper } from '@contexts/Web3Context';
+import { EncryptionProvider } from '@contexts/EncryptionContext';
 import { Web3Wrapper } from '@contexts/Web3Context';
 import { EncryptionProvider } from '@contexts/EncryptionContext';
 import { ErrorBoundary } from '@components/ErrorBoundary';

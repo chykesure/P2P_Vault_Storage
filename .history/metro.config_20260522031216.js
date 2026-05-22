@@ -1,3 +1,4 @@
+Set-Content -Path metro.config.js -Value @'
 const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
@@ -60,3 +61,4 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
 };
 
 module.exports = config;
+'@
